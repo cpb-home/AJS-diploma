@@ -23,8 +23,13 @@
  * ```
  * */
 export function calcTileType(index, boardSize) {
-  // TODO: ваш код будет тут
-  return 'center';
+  return (
+    checkTopFieldSide(index, boardSize) || 
+    checkBottomFieldSide(index, boardSize) || 
+    checkLeftFieldSide(index, boardSize) || 
+    checkRightFieldSide(index, boardSize) || 
+    'center'
+  );
 }
 
 export function calcHealthLevel(health) {
@@ -37,4 +42,44 @@ export function calcHealthLevel(health) {
   }
 
   return 'high';
+}
+
+function checkTopFieldSide(index, boardSize) {
+  if (index < boardSize) {
+    if (index === 0) {
+      return 'top-left';
+    }
+
+    if (index === (boardSize - 1)) {
+      return 'top-right';
+    }
+
+    return 'top';
+  }
+}
+
+function checkBottomFieldSide(index, boardSize) {
+  if (index >= (boardSize**2 - boardSize)) {
+    if (index === (boardSize**2 - boardSize)) {
+      return 'bottom-left';
+    }
+
+    if (index === (boardSize**2 - 1)) {
+      return 'bottom-right';
+    }
+
+    return 'bottom';
+  }
+}
+
+function checkLeftFieldSide(index, boardSize) {
+  if (index % boardSize === 0) {
+    return 'left';
+  }
+}
+
+function checkRightFieldSide(index, boardSize) {
+  if ((index + 1) % boardSize === 0) {
+    return 'right';
+  }
 }
