@@ -33,30 +33,61 @@ export default class GameController {
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
+
+    
   }
 
   onCellClick(index) {
-    const playerTeam = gameState.playerTeam.find((el) => el.position === index);
-    const compTeam = gameState.compTeam.find((el) => el.position === index);
+    const playerChar = gameState.playerTeam.find((el) => el.position === index);
+    const compChar = gameState.compTeam.find((el) => el.position === index);
 
     if (Object.keys(gameState.selectedChar).length === 0) {                                           // если нет текущего персонажа
-      if (playerTeam) {                                                                                 // если ткнул в своего персонажа
+      if (playerChar) {                                                                                 // если ткнул в своего персонажа
         this.gamePlay.selectCell(index);
-        gameState.selectedChar.character = playerTeam.character;
-        gameState.selectedChar.position = playerTeam.position;
+        gameState.selectedChar.character = playerChar.character;
+        gameState.selectedChar.position = playerChar.position;
       } else {                                                                                          // если ткнул не в своего
         GamePlay.showError("Надо выбрать своего персонажа");
       }
     } else {                                                                                          // если есть текущий персонаж
-      if (playerTeam) {                                                                                 // если ткнул в своего
-        this.gamePlay.deselectCell(gameState.selectedChar.position);
-        this.gamePlay.selectCell(index);
-        gameState.selectedChar.character = playerTeam.character;
-        gameState.selectedChar.position = playerTeam.position;
-      } else if (compTeam) {                                                                            // если ткнул в компа   
-        
-      } else {                                                                                          // если ткнул ни в кого
-
+      const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
+      if (allowedToTurn.includes(index)) {
+        if (playerChar) {                                                                                 // если ткнул в своего
+          this.gamePlay.deselectCell(gameState.selectedChar.position);
+          this.gamePlay.selectCell(index);
+          gameState.selectedChar.character = playerChar.character;
+          gameState.selectedChar.position = playerChar.position;
+        } else if (compChar) {                                                                            // если ткнул в компа
+          this.attackRival(index, gameState.selectedChar.character, compChar.character);
+          this.gamePlay.deselectCell(gameState.selectedChar.position);
+          this.gamePlay.deselectCell(index);
+          //this.gamePlay.redrawPositions(newTurns);
+          gameState.selectedChar = {};
+        } else {                                                                                          // если ткнул в пустую клетку
+          const newTurns = [];
+          newTurns.push({character: gameState.selectedChar.character, position: index});
+          //console.log(gameState.compTeam, gameState.playerChar);
+          gameState.compTeam.forEach(el => {                                                              // отправляем данные персов компа
+            if (el.position !== gameState.selectedChar.position) {
+              newTurns.push({character: el.character, position: el.position});
+            } else {
+              el.position = index;
+            }
+          });
+          gameState.playerTeam.forEach(el => {                                                            // отправляем данные персов игрока
+            if (el.position !== gameState.selectedChar.position) {
+              newTurns.push({character: el.character, position: el.position});
+            } else {
+              el.position = index;
+            }
+          });
+          //gameState.selectedChar.position = index;
+          //console.log(gameState.selectedChar.position, index);
+          this.gamePlay.deselectCell(gameState.selectedChar.position);
+          this.gamePlay.deselectCell(index);
+          this.gamePlay.redrawPositions(newTurns);
+          gameState.selectedChar = {};
+        }
       }
     }
   }
@@ -79,15 +110,27 @@ export default class GameController {
       if (playerTeam) {                                                                                 // если навёл на своего
         this.gamePlay.setCursor("pointer");
       } else if (compTeam) {                                                                            // если навёл не на своего
+        // если атакуемая клетка в списке доступных для атаки
         this.gamePlay.setCursor("crosshair");
       } else {                                                                                          // если навёл на пустое поле
-        this.gamePlay.setCursor("not-allowed");
+        // если наведенная клетка в списке доступных для перехода
+        const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
+        if (allowedToTurn.includes(index)) {
+          this.gamePlay.setCursor("pointer");
+          this.gamePlay.selectCell(index, "green");
+        } else {
+          this.gamePlay.setCursor("not-allowed");
+        }
       }
     }
   }
 
   onCellLeave(index) {
+    const playerTeam = gameState.playerTeam.find((el) => el.position === index);
     this.gamePlay.hideCellTooltip(index);
+    if (!playerTeam) {
+      this.gamePlay.deselectCell(index);
+    }
   }
 
   createTeams() {
@@ -160,5 +203,199 @@ export default class GameController {
     if (char) {
       return `\u{1F396}${char.character.level} \u{2694}${char.character.attack} \u{1F6E1}${char.character.defence} \u{2764}${char.character.health}`;
     }
+  }
+
+  findAllowedToTurn(position, type) {
+    let turns;
+    switch (type) {
+      case 'swordsman':
+      case 'undead':
+        turns = 4;
+        break;
+      case 'bowman':
+      case 'vampire':
+        turns = 2;
+        break;
+      case 'magician':
+      case 'daemon':
+        turns = 1;
+    }
+
+    const searched = this.findTurns(position, turns);
+    return searched;
+  }
+
+  findAllowedToAttack(index, type) {
+    let turns;
+    switch (type) {
+      case 'swordsman':
+      case 'undead':
+        turns = 1;
+        break;
+      case 'bowman':
+      case 'vampire':
+        turns = 2;
+        break;
+      case 'magician':
+      case 'daemon':
+        turns = 4;
+    }
+
+    this.findTurns(index, turns);
+
+    return [];
+  }
+
+  findTurns(position, turns) {
+    const currentRow = (this.getFieldRows().find(array => array.includes(position))).sort((a, b) => a - b);
+    const elRowPosition = currentRow.findIndex(e => e === position);
+    const currentCol = (this.getFieldCols().find(array => array.includes(position))).sort((a, b) => a - b);
+    const elColPosition = currentCol.findIndex(e => e === position);
+    const currentRigthToLeftDiag = (this.getRightToLeftDiag().find(array => array.includes(position))).sort((a, b) => a - b);
+    const elRigthToLeftDiagPosition = currentRigthToLeftDiag.findIndex(e => e === position);
+    const currentLeftToRightDiag = (this.getLeftToRightDiag().find(array => array.includes(position))).sort((a, b) => a - b);
+    const elLeftToRightDiagPosition = currentLeftToRightDiag.findIndex(e => e === position);
+
+    const turnTop = [];
+    const turnTopRight = [];
+    const turnRight = [];
+    const turnBottomRight = [];
+    const turnBottom = [];
+    const turnBottomLeft = [];
+    const turnLeft = [];
+    const turnTopLeft = [];
+
+    for (let i = 1; i <= turns; i++) {
+      if ((elColPosition - i) >= 0) {
+        turnTop.push(position - i*8);
+      }
+      if ((elColPosition + i) < currentCol.length) {
+        turnBottom.push(position + i*8);
+      }
+      if ((elRowPosition + i) < currentRow.length) {
+        turnRight.push(position + i);
+      }
+      if ((elRowPosition - i) >= 0) {
+        turnLeft.push(position - i);
+      }
+      if ((elRigthToLeftDiagPosition - i) >= 0) {
+        turnTopRight.push(currentRigthToLeftDiag[elRigthToLeftDiagPosition - i]);
+      }
+      if ((elRigthToLeftDiagPosition + i) < currentRigthToLeftDiag.length) {
+        turnBottomLeft.push(currentRigthToLeftDiag[elRigthToLeftDiagPosition + i]);
+      }
+      if ((elLeftToRightDiagPosition - i) >= 0) {
+        turnTopLeft.push(currentLeftToRightDiag[elLeftToRightDiagPosition - i]);
+      }
+      if ((elLeftToRightDiagPosition + i) < currentLeftToRightDiag.length) {
+        turnBottomRight.push(currentLeftToRightDiag[elLeftToRightDiagPosition + i]);
+      }
+    }
+
+    return [].concat(turnTop, turnTopRight, turnRight, turnBottomRight, turnBottom, turnBottomLeft, turnLeft, turnTopLeft);
+  }
+
+  getFieldRows() {
+    const rows = [];
+
+    let rowsArr = [];
+    for (let i = 0; i < this.gamePlay.boardSize**2; i++) {
+      if (rowsArr.length == this.gamePlay.boardSize) {
+        rows.push(rowsArr);
+        rowsArr = [];
+        rowsArr.push(i);
+      } else if (i == (this.gamePlay.boardSize**2 - 1)) {
+        rowsArr.push(i);
+        rows.push(rowsArr);
+      } else {
+        rowsArr.push(i);
+      }
+    }
+
+    return rows;
+  }
+
+  getFieldCols() {
+    let colsArr = [];
+
+    for (let i = 0; i < this.gamePlay.boardSize; i++) {
+      colsArr.push([]);
+    }
+    let j = 0;
+    for (let i = 0; i < this.gamePlay.boardSize**2; i++) {
+      if (j < this.gamePlay.boardSize) {
+        colsArr[j].push(i);
+        j++;
+      } else {
+        j = 0;
+        colsArr[j].push(i);
+        j++;
+      }
+    }
+
+    return colsArr;
+  }
+
+  getRightToLeftDiag() {
+    const rows = this.getFieldRows();
+    const diags = [];
+  
+    for (let i = 0; i < (this.gamePlay.boardSize * 2 - 1); i++) {
+      diags.push([]);
+    }
+    
+    for (let i = 0; i < this.gamePlay.boardSize; i++) {
+      for (let j = 0; j < (i + 1); j++) {
+        diags[i].push(rows[j][i-j]);
+      }
+    }
+  
+    for (let i = 1; i < (this.gamePlay.boardSize); i++) {
+      for (let j = (this.gamePlay.boardSize - 1); j > (i - 1); j--) {
+        diags[i + this.gamePlay.boardSize - 1].push(rows[j][this.gamePlay.boardSize - 1 + i - j]);
+      }
+    }
+
+    return diags;
+  }
+
+  getLeftToRightDiag() {
+    const rows = this.getFieldRows();
+    const diags = [];
+    
+    for (let i = 0; i < (this.gamePlay.boardSize * 2 - 1); i++) {
+      diags.push([]);
+    }
+    
+    for (let i = 0; i < this.gamePlay.boardSize; i++) {
+      for (let j = 0; j < (i + 1); j++) {
+        diags[i].push(rows[this.gamePlay.boardSize - 1 - j][i - j]);
+      }
+    }
+  
+    for (let i = 1; i < this.gamePlay.boardSize; i++) {
+      for (let j = 0; j < (this.gamePlay.boardSize - i); j++) {
+        diags[i + this.gamePlay.boardSize - 1].push(rows[j][i + j]);
+      }
+    }
+  
+    return diags;
+  }
+
+  attackRival(index, attacker, target) {
+    const damage = Math.max(attacker.attack - target.defence, attacker.attack * 0.1);
+    this.gamePlay.showDamage(index, damage).then(() => {
+      if ((target.health - damage) > 0) {
+        target.health -= damage;
+      } else {
+        target.health = 0;
+        gameState.compTeam.splice(gameState.compTeam.findIndex(el => el.character.health === 0), 1);
+        gameState.playerTeam.splice(gameState.playerTeam.findIndex(el => el.character.health === 0), 1);
+        this.places.splice(this.places.findIndex(el => el.character.health === 0), 1);
+      }
+      //this.places = this.placeCharacters(teams);
+      this.gamePlay.redrawPositions(this.places);
+    });
+    
   }
 }

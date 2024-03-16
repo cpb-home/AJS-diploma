@@ -3,8 +3,10 @@ export default class GameState {
     this.gameLevel = 1;
     this.playerTeam = [];   // {char, position};
     this.compTeam = [];     // {char, position};
-    this.selectedChar = -1;      // int
     this.selectedChar = {};
+    this.turn = 'player';
+    this.playerScore = 0;
+    this.compScpre = 0;
   }
 
   static from(object) {
