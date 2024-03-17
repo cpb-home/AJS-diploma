@@ -6,7 +6,8 @@ export default class GameState {
     this.selectedChar = {};
     this.turn = 'player';
     this.playerScore = 0;
-    this.compScpre = 0;
+    this.compScore = 0;
+    this.hiScore = 0;
   }
 
   static from(object) {

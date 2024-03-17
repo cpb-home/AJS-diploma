@@ -7,7 +7,6 @@ import Magician from "./characters/Magician";
 import Undead from "./characters/Undead";
 import Vampire from "./characters/Vampire";
 import GameState from "./GameState";
-import GamePlay from "./GamePlay";
 //import GameStateService from './GameStateService';
 import { generateTeam } from "./generators";
 
@@ -18,6 +17,7 @@ export default class GameController {
     this.gamePlay = gamePlay;
     this.stateService = stateService;
     this.places;
+    this.messageTimeout = 0;
   }
 
   init() {
@@ -29,12 +29,11 @@ export default class GameController {
     this.places = this.placeCharacters(teams); // позиции персонажей в массиве {character, position}
 
     this.gamePlay.redrawPositions(this.places);
+    this.updateScores();
 
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
-
-    
   }
 
   onCellClick(index) {
@@ -47,48 +46,11 @@ export default class GameController {
         gameState.selectedChar.character = playerChar.character;
         gameState.selectedChar.position = playerChar.position;
       } else {                                                                                          // если ткнул не в своего
-        GamePlay.showError("Надо выбрать своего персонажа");
+        //GamePlay.showError("Надо выбрать своего персонажа");
+        this.showMessage('Надо выбрать своего персонажа', 'white');
       }
     } else {                                                                                          // если есть текущий персонаж
-      const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
-      if (allowedToTurn.includes(index)) {
-        if (playerChar) {                                                                                 // если ткнул в своего
-          this.gamePlay.deselectCell(gameState.selectedChar.position);
-          this.gamePlay.selectCell(index);
-          gameState.selectedChar.character = playerChar.character;
-          gameState.selectedChar.position = playerChar.position;
-        } else if (compChar) {                                                                            // если ткнул в компа
-          this.attackRival(index, gameState.selectedChar.character, compChar.character);
-          this.gamePlay.deselectCell(gameState.selectedChar.position);
-          this.gamePlay.deselectCell(index);
-          //this.gamePlay.redrawPositions(newTurns);
-          gameState.selectedChar = {};
-        } else {                                                                                          // если ткнул в пустую клетку
-          const newTurns = [];
-          newTurns.push({character: gameState.selectedChar.character, position: index});
-          //console.log(gameState.compTeam, gameState.playerChar);
-          gameState.compTeam.forEach(el => {                                                              // отправляем данные персов компа
-            if (el.position !== gameState.selectedChar.position) {
-              newTurns.push({character: el.character, position: el.position});
-            } else {
-              el.position = index;
-            }
-          });
-          gameState.playerTeam.forEach(el => {                                                            // отправляем данные персов игрока
-            if (el.position !== gameState.selectedChar.position) {
-              newTurns.push({character: el.character, position: el.position});
-            } else {
-              el.position = index;
-            }
-          });
-          //gameState.selectedChar.position = index;
-          //console.log(gameState.selectedChar.position, index);
-          this.gamePlay.deselectCell(gameState.selectedChar.position);
-          this.gamePlay.deselectCell(index);
-          this.gamePlay.redrawPositions(newTurns);
-          gameState.selectedChar = {};
-        }
-      }
+      this.playerTurn(index, playerChar, compChar);
     }
   }
 
@@ -107,14 +69,17 @@ export default class GameController {
         this.gamePlay.setCursor("not-allowed");
       }
     } else {                                                                                          // если есть текущий персонаж
+      const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
+      const allowedToAttack = this.findAllowedToAttack(gameState.selectedChar.position, gameState.selectedChar.character.type);
       if (playerTeam) {                                                                                 // если навёл на своего
         this.gamePlay.setCursor("pointer");
       } else if (compTeam) {                                                                            // если навёл не на своего
-        // если атакуемая клетка в списке доступных для атаки
-        this.gamePlay.setCursor("crosshair");
-      } else {                                                                                          // если навёл на пустое поле
-        // если наведенная клетка в списке доступных для перехода
-        const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
+        if (allowedToAttack.includes(index)) {
+          this.gamePlay.setCursor("crosshair");
+        } else {
+          this.gamePlay.setCursor("not-allowed");
+        }
+      } else {                                                                                          // если навёл на пуст
         if (allowedToTurn.includes(index)) {
           this.gamePlay.setCursor("pointer");
           this.gamePlay.selectCell(index, "green");
@@ -225,7 +190,7 @@ export default class GameController {
     return searched;
   }
 
-  findAllowedToAttack(index, type) {
+  findAllowedToAttack(position, type) {
     let turns;
     switch (type) {
       case 'swordsman':
@@ -241,9 +206,8 @@ export default class GameController {
         turns = 4;
     }
 
-    this.findTurns(index, turns);
-
-    return [];
+    const searched = this.findTurns(position, turns);
+    return searched;
   }
 
   findTurns(position, turns) {
@@ -389,13 +353,257 @@ export default class GameController {
         target.health -= damage;
       } else {
         target.health = 0;
-        gameState.compTeam.splice(gameState.compTeam.findIndex(el => el.character.health === 0), 1);
-        gameState.playerTeam.splice(gameState.playerTeam.findIndex(el => el.character.health === 0), 1);
-        this.places.splice(this.places.findIndex(el => el.character.health === 0), 1);
+        this.removeDiedChars();
       }
-      //this.places = this.placeCharacters(teams);
+
+      let flag = false;
+      if (gameState.turn === 'player') {
+        gameState.playerScore += damage;
+        flag = true;
+      } else {
+        gameState.compScore += damage;
+      }
+      gameState.turn = gameState.turn === 'comp' ? 'player' : 'comp';
+      this.updateScores();
       this.gamePlay.redrawPositions(this.places);
-    });
+      if (flag) {
+        flag = false;
+        this.compTurn();
+      }
+    }); 
+  }
+
+  removeDiedChars() {
+    const playerQuantity = gameState.playerTeam.length;
+    const playerTeam = gameState.playerTeam.filter(el => el.character.health !== 0);
+    gameState.playerTeam = [...playerTeam];
+    if (playerQuantity !== gameState.playerTeam.length) {
+      this.showMessage('Ваш персонаж был убит', 'red');
+    }
+
+    const compQuantity = gameState.compTeam.length;
+    const compTeam = gameState.compTeam.filter(el => el.character.health !== 0);
+    gameState.compTeam = [...compTeam];
+    const forPlaces = this.places.filter(el => el.character.health !== 0);
+    if (compQuantity !== gameState.compTeam.length) {
+      this.showMessage('Персонаж компьютера был убит', 'orange');
+    }
+
+    this.places = [...forPlaces];
+  }
+
+  updateScores() {
+    const playerScore = document.querySelector('.playerScore');
+    const compScore = document.querySelector('.compScore');
+    const hiScore = document.querySelector('.hiScore');
+    playerScore.textContent = gameState.playerScore;
+    compScore.textContent = gameState.compScore;
+    hiScore.textContent = gameState.hiScore;
+  }
+
+  playerTurn(index, playerChar, compChar) { // ВЫБРАН СВОЙ ПЕРС
+    gameState.turn = 'player';
+    const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
+    const allowedToAttack = this.findAllowedToAttack(gameState.selectedChar.position, gameState.selectedChar.character.type);
     
+    if (allowedToTurn.includes(index) || allowedToAttack.includes(index)) {                   // если на пути хода или атаки
+      if (playerChar) {                                                                       // если ткнул в своего
+        this.gamePlay.deselectCell(gameState.selectedChar.position);
+        this.gamePlay.selectCell(index);
+        gameState.selectedChar.character = playerChar.character;
+        gameState.selectedChar.position = playerChar.position;
+      } else if (compChar) {                                                                            // если ткнул в компа
+        if (allowedToAttack.includes(index)) {
+          this.attackRival(index, gameState.selectedChar.character, compChar.character);
+          this.gamePlay.deselectCell(gameState.selectedChar.position);
+          this.gamePlay.deselectCell(index);
+          //this.gamePlay.redrawPositions(newTurns);
+          gameState.selectedChar = {};
+          this.showMessage('Вы успешно атаковали', 'yellow');
+        }
+      } else {                                                                                          // если ткнул в пустую клетку
+        if (allowedToTurn.includes(index)) {
+          const newTurns = [];
+          newTurns.push({character: gameState.selectedChar.character, position: index});
+          gameState.compTeam.forEach(el => {                                                              // отправляем данные персов компа
+            if (el.position !== gameState.selectedChar.position) {
+              newTurns.push({character: el.character, position: el.position});
+            } else {
+              el.position = index;
+            }
+          });
+          gameState.playerTeam.forEach(el => {                                                            // отправляем данные персов игрока
+            if (el.position !== gameState.selectedChar.position) {
+              newTurns.push({character: el.character, position: el.position});
+            } else {
+              el.position = index;
+            }
+          });
+
+          this.gamePlay.deselectCell(gameState.selectedChar.position);
+          this.gamePlay.deselectCell(index);
+          this.gamePlay.redrawPositions(newTurns);
+          gameState.selectedChar = {};
+          this.showMessage('Вы успешно сходили', 'rgba(117, 241, 148, 0.623)');
+          this.compTurn();
+        }
+      }
+    } else {                                                                                            // если НЕ на пути хода или атаки
+      if (playerChar) {                                                                       // если ткнул в своего
+        this.gamePlay.deselectCell(gameState.selectedChar.position);
+        this.gamePlay.selectCell(index);
+        gameState.selectedChar.character = playerChar.character;
+        gameState.selectedChar.position = playerChar.position;
+      }
+    }
+  }
+
+  compTurn() {
+    gameState.turn = 'comp';
+
+    let subAttacker = null;
+    let subTarget = null;
+    gameState.compTeam.forEach(char => {          // перебираем каждого компа, есть ли в пределах видимость атакуемый
+      const allowedToAttack = this.findAllowedToAttack(char.position, char.character.type);
+      allowedToAttack.forEach(turn => {
+        gameState.playerTeam.forEach(el => {
+          if (el.position === turn) {
+            subAttacker = char;
+            subTarget = el;
+            gameState.selectedChar.character = char.character;
+            gameState.selectedChar.position = char.position;
+          }
+        });
+      });
+    });
+
+    if (subAttacker !== null && subTarget !== null) { // проводим атаку, если нашли цель для атакие
+      this.attackRival(subTarget.position, subAttacker.character, subTarget.character);
+      gameState.selectedChar.character = subAttacker.character;
+      gameState.selectedChar.position = subAttacker.position;
+      this.gamePlay.deselectCell(gameState.selectedChar.position);
+      this.gamePlay.deselectCell(subTarget.position);
+      gameState.selectedChar = {};
+    } else {                                          // раз не нашли цель для атаки, то ходим к ближайшему позорнику
+      
+      gameState.playerTeam.sort((a, b) => {   // выбираем с меньшей жизнью, а если равны, то с меньшим уровнем.
+        if (a.character.health === b.character.health){
+          return a.character.level - b.character.level;
+        }
+        return a.character.health - b.character.health;
+      });
+      const target = gameState.playerTeam[0];
+  
+      let attacker = null;
+      gameState.compTeam.forEach(el => {
+        if ((el.position - target.position) > 0) { // если элемент минус цель больше нуля
+          if (attacker === null) {    // если нет аттакера
+            attacker = el;
+          } else {                    // если аттакер есть
+            if (attacker.position > el.position) {
+              attacker = el;
+            }
+          }
+        } else {                                    // если элемент минус цель меньше нуля
+          if (attacker === null) {    // если нет аттакера
+            attacker = el;
+          } else {                    // если аттакер есть
+            if (attacker.position < el.position) {
+              attacker = el;
+            }
+          }
+        }
+      });
+
+      gameState.selectedChar.character = attacker.character;
+      gameState.selectedChar.position = attacker.position;
+      
+      const allowedToTurn = this.findAllowedToTurn(gameState.selectedChar.position, gameState.selectedChar.character.type);
+      
+      let goTo;
+      let compNotCompare = false;
+      let playerNotCompare = false;
+      do {
+        goTo = Math.floor(Math.random()*allowedToTurn.length);
+        compNotCompare = gameState.compTeam.every(el => el.position !== allowedToTurn[goTo]);
+        playerNotCompare = gameState.playerTeam.every(el => el.position !== allowedToTurn[goTo]);
+      } while ((compNotCompare === false) || (playerNotCompare === false));
+
+      const newTurns = [];
+      newTurns.push({character: gameState.selectedChar.character, position: allowedToTurn[goTo]});
+      gameState.playerTeam.forEach(el => newTurns.push({character: el.character, position: el.position}));  // отправляем данные персов игрока
+      
+      gameState.compTeam.forEach(el => {                                                            // отправляем данные персов компа
+        if (el.position !== gameState.selectedChar.position) {
+          newTurns.push({character: el.character, position: el.position});
+        } else {
+          el.position = allowedToTurn[goTo];
+        }
+      });
+
+      gameState.selectedChar.position = attacker.position;
+      this.gamePlay.deselectCell(gameState.selectedChar.position);
+      this.gamePlay.deselectCell(target.position);
+      this.gamePlay.redrawPositions(newTurns);
+      gameState.selectedChar = {};
+    }
+
+
+
+
+
+
+
+/*
+    if (allowedToAttack.includes(target.position)) {                                // если можно атаковать, то атакуем
+      
+      
+      this.attackRival(target.position, attacker.character, target.character);
+      this.gamePlay.deselectCell(gameState.selectedChar.position);
+      this.gamePlay.deselectCell(target.position);
+      gameState.selectedChar = {};
+    } else {                                                                        // если нельзя атаковать, ходим
+      console.log('комп пропускает ход ' + target.position);
+    }
+      if (!allowedToTurn.includes(target.position)) {
+        
+        let index;
+        let compNotCompare = false;
+        let playerNotCompare = false;
+console.log(allowedToTurn, gameState.compTeam);
+        do {
+          index = Math.floor(Math.random()*allowedToTurn.length); console.log('index = ' + index);
+          compNotCompare = gameState.compTeam.every(el => el.position !== allowedToTurn[index]); console.log('allnotcompate =' + compNotCompare);
+          playerNotCompare = gameState.playerTeam.every(el => el.position !== allowedToTurn[index]);
+        } while ((compNotCompare === false) || (playerNotCompare === false));
+        
+        const newTurns = [];
+        newTurns.push({character: gameState.selectedChar.character, position: allowedToTurn[index]});
+        gameState.playerTeam.forEach(el => newTurns.push({character: el.character, position: el.position}));  // отправляем данные персов игрока
+        
+        gameState.compTeam.forEach(el => {                                                            // отправляем данные персов игрока
+          if (el.position !== gameState.selectedChar.position) {
+            newTurns.push({character: el.character, position: el.position});
+          }
+        });
+        this.gamePlay.deselectCell(gameState.selectedChar.position);
+        this.gamePlay.deselectCell(gameState.selectedChar.position);
+        this.gamePlay.redrawPositions(newTurns);
+        gameState.selectedChar = {};
+      }
+    }
+*/
+
+    //console.log(target, attacker);
+  }
+
+  showMessage(message, color = 'red') {
+    const messageBox = document.querySelector('.messageBox');
+
+    clearTimeout(this.messageTimeout);
+    messageBox.style.color = color;
+    messageBox.textContent = message;
+
+    this.messageTimeout = setTimeout(() => messageBox.textContent = '', 2000);
   }
 }

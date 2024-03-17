@@ -35,8 +35,23 @@ export default class GamePlay {
         <button data-id="action-save" class="btn">Save Game</button>
         <button data-id="action-load" class="btn">Load Game</button>
       </div>
+      <div class="messageBox"></div>
       <div class="board-container">
         <div data-id="board" class="board"></div>
+      </div>
+      <div class="stats">
+        <div class="scores">
+          <div>Очки игрока</div>
+          <div class="playerScore"></div>
+        </div>
+        <div class="scores">
+          <div>Очки компьютера</div>
+          <div class="compScore"></div>
+        </div>
+        <div class="scores">
+          <div>Рекорд</div>
+          <div class="hiScore"></div>
+        </div>
       </div>
     `;
 
