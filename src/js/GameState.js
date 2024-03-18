@@ -9,9 +9,9 @@ export default class GameState {
     this.compScore = 0;
     this.hiScore = 0;
   }
-
+/*
   static from(object) {
     // TODO: create object
     return null;
-  }
+  }*/
 }

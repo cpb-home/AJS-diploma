@@ -24,7 +24,7 @@ export default class GameController {
     // TODO: add event listeners to gamePlay events
     // TODO: load saved stated from stateService
 
-    this.gamePlay.drawUi(themes.prairie);
+    this.gamePlay.drawUi(themes[this.theamSelect()]);
     const teams = this.createTeams(); // команды
     this.places = this.placeCharacters(teams); // позиции персонажей в массиве {character, position}
 
@@ -101,8 +101,20 @@ export default class GameController {
   createTeams() {
     const playerTypes = [Bowman, Swordsman, Magician];
     const pcTypes = [Undead, Vampire, Daemon];
-    const playerTeam = generateTeam(playerTypes, 4, 2);
-    const pcTeam = generateTeam(pcTypes, 4, 2);
+
+    const playerTeam = generateTeam(playerTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.playerTeam.length);
+    if (gameState.playerTeam.length !== 0) {
+      gameState.playerTeam.forEach(el => playerTeam.characters.push(el.character));
+    }
+
+    const pcTeam = generateTeam(pcTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.compTeam.length);
+    if (gameState.compTeam.length !== 0) {
+      gameState.compTeam.forEach(el => pcTeam.characters.push(el.character));
+    }
+
+    gameState.playerTeam = [];
+    gameState.compTeam = [];
+
     return { playerTeam, pcTeam };
   }
 
@@ -117,35 +129,44 @@ export default class GameController {
 
     const listOfCharacters = [];
 
-    let lastPlayerCell, lastPCCell, currentPlayerCell, currentPCCell;
+    let newCell, currentPlayerCell, currentPCCell;
     for (let i = 0; i < teams.playerTeam.characters.length; i++) {
-      currentPlayerCell = this.getRandomCell(playerFields);
-      while (currentPlayerCell === lastPlayerCell) {
+      if (gameState.playerTeam.length === 0) {
         currentPlayerCell = this.getRandomCell(playerFields);
+      } else {
+        let flag = false;
+        do {
+          newCell = this.getRandomCell(playerFields);
+          flag = gameState.playerTeam.every(el => el.position !== newCell);
+        } while (!flag);
+        currentPlayerCell = newCell;
       }
-      lastPlayerCell = currentPlayerCell;
       const charWithPlace = new PositionedCharacter(
         teams.playerTeam.characters[i],
-        lastPlayerCell
+        currentPlayerCell
       );
       gameState.playerTeam.push(charWithPlace);
       listOfCharacters.push(charWithPlace);
     }
 
     for (let i = 0; i < teams.pcTeam.characters.length; i++) {
-      currentPCCell = this.getRandomCell(pcFields);
-      while (currentPCCell === lastPCCell) {
+      if (gameState.compTeam.length === 0) {
         currentPCCell = this.getRandomCell(pcFields);
+      } else {
+        let flag = false;
+        do {
+          newCell = this.getRandomCell(pcFields);
+          flag = gameState.compTeam.every(el => el.position !== newCell);
+        } while (!flag);
+        currentPCCell = newCell;
       }
-      lastPCCell = currentPCCell;
       const charWithPlace = new PositionedCharacter(
         teams.pcTeam.characters[i],
-        lastPCCell
+        currentPCCell
       );
       gameState.compTeam.push(charWithPlace);
       listOfCharacters.push(charWithPlace);
     }
-
     return listOfCharacters;
   }
 
@@ -366,9 +387,14 @@ export default class GameController {
       gameState.turn = gameState.turn === 'comp' ? 'player' : 'comp';
       this.updateScores();
       this.gamePlay.redrawPositions(this.places);
-      if (flag) {
-        flag = false;
-        this.compTurn();
+
+      if (gameState.playerTeam.length === 0 || gameState.compTeam.length === 0) {     // если одна из команд пустая
+        this.upStageGame();
+      } else {                                                                        // если обе команды не пустые
+        if (flag) {
+          flag = false;
+          this.compTurn();
+        }
       }
     }); 
   }
@@ -605,5 +631,37 @@ console.log(allowedToTurn, gameState.compTeam);
     messageBox.textContent = message;
 
     this.messageTimeout = setTimeout(() => messageBox.textContent = '', 2000);
+  }
+
+  upStageGame() {console.log(gameState.gameLevel);
+    if (gameState.gameLevel < 4) {                                            // если уровень игры < 4, то повышаемся и играем дальше
+      gameState.gameLevel++;
+
+      this.gamePlay.drawUi(themes[this.theamSelect()]);
+      const teams = this.createTeams();                                       // добираем команды
+      this.places = this.placeCharacters(teams);                              // создаём позиции для персонажей
+      this.gamePlay.redrawPositions(this.places);                             // размещаем всех на поле
+/*
+      this.updateScores();*/
+    } else {                                                                  // если уровень игры 4 и выше, то конец игры
+      this.finishTheGame();
+    }
+  }
+
+  theamSelect() {
+    switch (gameState.gameLevel) {
+      case 1: 
+        return 'prairie';
+      case 2: 
+        return 'desert';
+      case 3:
+        return 'arctic';
+      case 4:
+        return 'mountain';
+    }
+  }
+
+  finishTheGame() {
+    console.log("Игра окончена.");
   }
 }
