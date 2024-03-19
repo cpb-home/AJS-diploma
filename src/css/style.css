@@ -25,6 +25,7 @@ body {
   border-radius: .25rem;
   transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
   border: none;
+  cursor: pointer;
 }
 
 .controls {
@@ -37,6 +38,16 @@ body {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
+  position: relative;
+}
+
+.boardCover {
+  display: none;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
 }
 
 .messageBox {

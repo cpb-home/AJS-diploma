@@ -38,6 +38,7 @@ export default class GamePlay {
       <div class="messageBox"></div>
       <div class="board-container">
         <div data-id="board" class="board"></div>
+        <div class="boardCover"></div>
       </div>
       <div class="stats">
         <div class="scores">

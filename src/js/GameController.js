@@ -7,7 +7,6 @@ import Magician from "./characters/Magician";
 import Undead from "./characters/Undead";
 import Vampire from "./characters/Vampire";
 import GameState from "./GameState";
-//import GameStateService from './GameStateService';
 import { generateTeam } from "./generators";
 
 const gameState = new GameState();
@@ -29,11 +28,16 @@ export default class GameController {
     this.places = this.placeCharacters(teams); // позиции персонажей в массиве {character, position}
 
     this.gamePlay.redrawPositions(this.places);
+    this.restoreHiScore();
     this.updateScores();
 
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
+
+    this.gamePlay.addNewGameListener(() => this.startNewGame());
+    this.gamePlay.addLoadGameListener(() => this.loadGame());
+    this.gamePlay.addSaveGameListener(() => this.saveGame());
   }
 
   onCellClick(index) {
@@ -102,14 +106,37 @@ export default class GameController {
     const playerTypes = [Bowman, Swordsman, Magician];
     const pcTypes = [Undead, Vampire, Daemon];
 
-    const playerTeam = generateTeam(playerTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.playerTeam.length);
+    const playerTeam = generateTeam(playerTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.playerTeam.length);console.log(playerTeam.characters)
+    playerTeam.characters.forEach(char => {
+      if (char.level > 1) {
+        for (let i = 1; i < char.level; i++) {
+          this.updateChar(char);
+        }
+      }
+    });
+
     if (gameState.playerTeam.length !== 0) {
-      gameState.playerTeam.forEach(el => playerTeam.characters.push(el.character));
+      gameState.playerTeam.forEach(el => {
+        this.updateChar(el.character);
+        el.character.level++;
+        playerTeam.characters.push(el.character);
+      });
     }
 
     const pcTeam = generateTeam(pcTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.compTeam.length);
+    pcTeam.characters.forEach(char => {
+      if (char.level > 1) {
+        for (let i = 1; i < char.level; i++) {
+          this.updateChar(char);
+        }
+      }
+    });
     if (gameState.compTeam.length !== 0) {
-      gameState.compTeam.forEach(el => pcTeam.characters.push(el.character));
+      gameState.compTeam.forEach(el => {
+        this.updateChar(el.character);
+        el.character.level++;
+        playerTeam.characters.push(el.character);
+      });
     }
 
     gameState.playerTeam = [];
@@ -128,7 +155,7 @@ export default class GameController {
     pcFields.push(...this.getStartPositionsArray(7));
 
     const listOfCharacters = [];
-
+    
     let newCell, currentPlayerCell, currentPCCell;
     for (let i = 0; i < teams.playerTeam.characters.length; i++) {
       if (gameState.playerTeam.length === 0) {
@@ -148,7 +175,7 @@ export default class GameController {
       gameState.playerTeam.push(charWithPlace);
       listOfCharacters.push(charWithPlace);
     }
-
+    
     for (let i = 0; i < teams.pcTeam.characters.length; i++) {
       if (gameState.compTeam.length === 0) {
         currentPCCell = this.getRandomCell(pcFields);
@@ -368,10 +395,10 @@ export default class GameController {
   }
 
   attackRival(index, attacker, target) {
-    const damage = Math.max(attacker.attack - target.defence, attacker.attack * 0.1);
+    const damage = Number((Math.max(attacker.attack - target.defence, attacker.attack * 0.1)).toFixed(1));
     this.gamePlay.showDamage(index, damage).then(() => {
       if ((target.health - damage) > 0) {
-        target.health -= damage;
+        target.health = Number((target.health - damage).toFixed(1));
       } else {
         target.health = 0;
         this.removeDiedChars();
@@ -379,15 +406,15 @@ export default class GameController {
 
       let flag = false;
       if (gameState.turn === 'player') {
-        gameState.playerScore += damage;
+        gameState.playerScore = Number((gameState.playerScore + damage).toFixed(1));
         flag = true;
       } else {
-        gameState.compScore += damage;
+        gameState.compScore = Number((gameState.compScore + damage).toFixed(1));
       }
       gameState.turn = gameState.turn === 'comp' ? 'player' : 'comp';
       this.updateScores();
       this.gamePlay.redrawPositions(this.places);
-
+      
       if (gameState.playerTeam.length === 0 || gameState.compTeam.length === 0) {     // если одна из команд пустая
         this.upStageGame();
       } else {                                                                        // если обе команды не пустые
@@ -471,6 +498,7 @@ export default class GameController {
           this.gamePlay.redrawPositions(newTurns);
           gameState.selectedChar = {};
           this.showMessage('Вы успешно сходили', 'rgba(117, 241, 148, 0.623)');
+          this.setPlaces();
           this.compTurn();
         }
       }
@@ -502,7 +530,7 @@ export default class GameController {
         });
       });
     });
-
+    
     if (subAttacker !== null && subTarget !== null) { // проводим атаку, если нашли цель для атакие
       this.attackRival(subTarget.position, subAttacker.character, subTarget.character);
       gameState.selectedChar.character = subAttacker.character;
@@ -519,7 +547,7 @@ export default class GameController {
         return a.character.health - b.character.health;
       });
       const target = gameState.playerTeam[0];
-  
+      
       let attacker = null;
       gameState.compTeam.forEach(el => {
         if ((el.position - target.position) > 0) { // если элемент минус цель больше нуля
@@ -540,7 +568,7 @@ export default class GameController {
           }
         }
       });
-
+      
       gameState.selectedChar.character = attacker.character;
       gameState.selectedChar.position = attacker.position;
       
@@ -573,54 +601,7 @@ export default class GameController {
       this.gamePlay.redrawPositions(newTurns);
       gameState.selectedChar = {};
     }
-
-
-
-
-
-
-
-/*
-    if (allowedToAttack.includes(target.position)) {                                // если можно атаковать, то атакуем
-      
-      
-      this.attackRival(target.position, attacker.character, target.character);
-      this.gamePlay.deselectCell(gameState.selectedChar.position);
-      this.gamePlay.deselectCell(target.position);
-      gameState.selectedChar = {};
-    } else {                                                                        // если нельзя атаковать, ходим
-      console.log('комп пропускает ход ' + target.position);
-    }
-      if (!allowedToTurn.includes(target.position)) {
-        
-        let index;
-        let compNotCompare = false;
-        let playerNotCompare = false;
-console.log(allowedToTurn, gameState.compTeam);
-        do {
-          index = Math.floor(Math.random()*allowedToTurn.length); console.log('index = ' + index);
-          compNotCompare = gameState.compTeam.every(el => el.position !== allowedToTurn[index]); console.log('allnotcompate =' + compNotCompare);
-          playerNotCompare = gameState.playerTeam.every(el => el.position !== allowedToTurn[index]);
-        } while ((compNotCompare === false) || (playerNotCompare === false));
-        
-        const newTurns = [];
-        newTurns.push({character: gameState.selectedChar.character, position: allowedToTurn[index]});
-        gameState.playerTeam.forEach(el => newTurns.push({character: el.character, position: el.position}));  // отправляем данные персов игрока
-        
-        gameState.compTeam.forEach(el => {                                                            // отправляем данные персов игрока
-          if (el.position !== gameState.selectedChar.position) {
-            newTurns.push({character: el.character, position: el.position});
-          }
-        });
-        this.gamePlay.deselectCell(gameState.selectedChar.position);
-        this.gamePlay.deselectCell(gameState.selectedChar.position);
-        this.gamePlay.redrawPositions(newTurns);
-        gameState.selectedChar = {};
-      }
-    }
-*/
-
-    //console.log(target, attacker);
+    this.setPlaces();
   }
 
   showMessage(message, color = 'red') {
@@ -633,7 +614,7 @@ console.log(allowedToTurn, gameState.compTeam);
     this.messageTimeout = setTimeout(() => messageBox.textContent = '', 2000);
   }
 
-  upStageGame() {console.log(gameState.gameLevel);
+  upStageGame() {
     if (gameState.gameLevel < 4) {                                            // если уровень игры < 4, то повышаемся и играем дальше
       gameState.gameLevel++;
 
@@ -641,8 +622,6 @@ console.log(allowedToTurn, gameState.compTeam);
       const teams = this.createTeams();                                       // добираем команды
       this.places = this.placeCharacters(teams);                              // создаём позиции для персонажей
       this.gamePlay.redrawPositions(this.places);                             // размещаем всех на поле
-/*
-      this.updateScores();*/
     } else {                                                                  // если уровень игры 4 и выше, то конец игры
       this.finishTheGame();
     }
@@ -661,7 +640,81 @@ console.log(allowedToTurn, gameState.compTeam);
     }
   }
 
+  updateChar(char) {
+    char.attack = Number((char.attack * 1.1).toFixed(1)); //Math.max(char.attack, char.attack * (80 + char.health) / 100);
+    char.defence = Number((char.defence * 1.1).toFixed(1)); //Math.max(char.defence, char.defence * (80 + char.health) / 100);
+    char.health = Number(((char.health + 80) > 100 ? 100 : (char.health + 80)).toFixed(1));
+  }
+
   finishTheGame() {
-    console.log("Игра окончена.");
+    const gameResult = Math.max(gameState.playerScore, gameState.compScore);
+    const winner = gameState.playerScore > gameState.compScore ? 'Игрок' : 'Компьютер';
+    if (gameState.hiScore === 0) {
+      gameState.hiScore = gameResult;
+    } else {
+      if (gameState.hiScore < gameResult) {
+        gameState.hiScore = gameResult;
+        this.showMessage(`Игра окончена. Победил ${winner}. Установлен новый рекорд ${gameResult} оч.`, 'pink');
+      } else {
+        this.showMessage(`Игра окончена. Победил ${winner}.`, 'pink');
+      }
+    }
+
+    this.stateService.load();
+    const loadedState = JSON.parse(this.stateService.storage.state);
+    loadedState.hiScore = gameState.hiScore;
+    this.stateService.save(loadedState);
+    document.querySelector('.boardCover').display = 'block';
+  }
+
+  startNewGame() {
+    gameState.gameLevel = 1;
+    gameState.playerTeam = [];
+    gameState.compTeam = [];
+    gameState.selectedChar = {};
+    gameState.turn = 'player';
+    gameState.playerScore = 0;
+    gameState.compScore = 0;
+    gameState.hiScore = 0;
+
+    this.gamePlay.drawUi(themes[this.theamSelect()]);
+    const teams = this.createTeams();
+    this.places = this.placeCharacters(teams);
+    this.gamePlay.redrawPositions(this.places);
+    this.restoreHiScore();
+    this.updateScores();
+  }
+
+  loadGame() {
+    this.stateService.load();
+    const loadedState = JSON.parse(this.stateService.storage.state);
+    for (let prop in loadedState) {
+      gameState[prop] = loadedState[prop];
+    }
+    this.gamePlay.drawUi(themes[this.theamSelect()]);
+    this.setPlaces();
+    this.gamePlay.redrawPositions(this.places);
+    
+    this.updateScores();
+  }
+
+  saveGame() {
+    this.stateService.save(gameState);
+    this.updateScores();
+  }
+
+  setPlaces() {
+    this.places = [];
+
+    gameState.compTeam.forEach(el => this.places.push({character: el.character, position: el.position}));
+    gameState.playerTeam.forEach(el => this.places.push({character: el.character, position: el.position}));
+  }
+
+  restoreHiScore() {
+    this.stateService.load();
+    if (this.stateService.storage.state) {
+      const loadedState = JSON.parse(this.stateService.storage.state);
+      gameState.hiScore = loadedState.hiScore;
+    }
   }
 }
