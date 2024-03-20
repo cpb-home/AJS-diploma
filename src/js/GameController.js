@@ -106,7 +106,7 @@ export default class GameController {
     const playerTypes = [Bowman, Swordsman, Magician];
     const pcTypes = [Undead, Vampire, Daemon];
 
-    const playerTeam = generateTeam(playerTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.playerTeam.length);console.log(playerTeam.characters)
+    const playerTeam = generateTeam(playerTypes, gameState.gameLevel, gameState.gameLevel + 1 - gameState.playerTeam.length);
     playerTeam.characters.forEach(char => {
       if (char.level > 1) {
         for (let i = 1; i < char.level; i++) {
@@ -114,7 +114,7 @@ export default class GameController {
         }
       }
     });
-
+    
     if (gameState.playerTeam.length !== 0) {
       gameState.playerTeam.forEach(el => {
         this.updateChar(el.character);
@@ -654,17 +654,17 @@ export default class GameController {
     } else {
       if (gameState.hiScore < gameResult) {
         gameState.hiScore = gameResult;
+        this.stateService.load();
+        const loadedState = JSON.parse(this.stateService.storage.state);
+        loadedState.hiScore = gameState.hiScore;
+        this.stateService.save(loadedState);
         this.showMessage(`Игра окончена. Победил ${winner}. Установлен новый рекорд ${gameResult} оч.`, 'pink');
       } else {
         this.showMessage(`Игра окончена. Победил ${winner}.`, 'pink');
       }
     }
 
-    this.stateService.load();
-    const loadedState = JSON.parse(this.stateService.storage.state);
-    loadedState.hiScore = gameState.hiScore;
-    this.stateService.save(loadedState);
-    document.querySelector('.boardCover').display = 'block';
+    document.querySelector('.boardCover').style.display = 'block';
   }
 
   startNewGame() {
@@ -688,14 +688,48 @@ export default class GameController {
   loadGame() {
     this.stateService.load();
     const loadedState = JSON.parse(this.stateService.storage.state);
+
     for (let prop in loadedState) {
-      gameState[prop] = loadedState[prop];
+      if (prop === 'compTeam') {
+        gameState.compTeam = [];
+        loadedState[prop].forEach(el => {
+          const char = this.reCreateCharacter(el.character.type, el.character.level);
+          char.health = el.character.health;
+          char.attack = el.character.attack;
+          char.defence = el.character.defence;
+          gameState[prop].push({character: char, position: el.position});
+        });
+      } else if (prop === 'playerTeam') {
+        gameState.playerTeam = [];
+        loadedState.playerTeam.forEach(el => {
+          const char = this.reCreateCharacter(el.character.type, el.character.level);
+          char.health = el.character.health;
+          char.attack = el.character.attack;
+          char.defence = el.character.defence;
+          gameState[prop].push({character: char, position: el.position});
+        });
+      } else {
+        gameState[prop] = loadedState[prop];
+      }
     }
     this.gamePlay.drawUi(themes[this.theamSelect()]);
     this.setPlaces();
     this.gamePlay.redrawPositions(this.places);
     
     this.updateScores();
+  }
+
+  reCreateCharacter(type, level) {
+    const types = {
+      swordsman: Swordsman,
+      undead: Undead,
+      bowman: Bowman,
+      vampire: Vampire,
+      magician: Magician,
+      daemon: Daemon
+    };
+    const newChar = new types[type](level);
+    return newChar;
   }
 
   saveGame() {
